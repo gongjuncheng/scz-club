@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>孙春志周边 · 好物分享</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tus-js-client@3.1.3/dist/tus.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css">
+  <script src="common.js"></script>
+  <style>
+    body { background: #0b0710; font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+    .glass { background: rgba(255,255,255,0.08); backdrop-filter: blur(15px); border: 1px solid rgba(255,200,240,0.15); }
+    .gradient-bg { background: linear-gradient(135deg, #d43f8d, #6a1b4d); }
+    .bottom-nav { position: fixed; bottom: 0; left: 0; width: 100%; background: rgba(20,10,30,0.7); backdrop-filter: blur(20px); border-top: 1px solid rgba(255,255,255,0.1); padding: 10px 24px; display: flex; justify-content: space-around; z-index: 50; }
+    .nav-item { display: flex; flex-direction: column; align-items: center; color: rgba(255,255,240,0.6); font-size: 0.75rem; text-decoration: none; }
+    .nav-item.active { color: #ffb0d9; }
+    .nav-item i { font-size: 1.6rem; margin-bottom: 2px; }
+    .grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+  </style>
+</head>
+<body class="text-white pb-20">
+
+<div class="container mx-auto px-4 pt-6 max-w-4xl">
+  <div class="flex items-center gap-3 mb-4">
+    <img src="https://jbwmyqvlujytnjpgsqed.supabase.co/storage/v1/object/public/others/f0ba2146b733756d-removebg-preview.png" alt="Logo" class="w-10 h-10 rounded-full object-cover">
+    <h1 class="text-3xl font-extrabold tracking-wide">🧸 孙春志周边</h1>
+  </div>
+  <button id="show-form-btn" class="glass px-4 py-2 rounded-full text-sm flex items-center gap-2"><i class="fa fa-plus"></i> 炫耀我的周边</button>
+
+  <div id="publish-form" class="glass rounded-3xl p-5 mb-6 hidden">
+    <h2 class="text-lg font-semibold mb-4">分享你定制的孙春志周边</h2>
+    <div class="space-y-4">
+      <input type="text" id="goodie-name" placeholder="周边名称 (如：孙老师贴纸)" class="w-full p-3 rounded-2xl bg-black/30 border border-white/20 text-white">
+      <textarea id="goodie-desc" placeholder="炫耀一下！在哪做的？多可爱？" class="w-full p-3 rounded-2xl bg-black/30 border border-white/20 text-white" rows="2"></textarea>
+      <div class="flex gap-2">
+        <select id="goodie-category" class="flex-1 p-3 rounded-2xl bg-black/30 border border-white/20 text-white">
+          <option value="贴纸">🖼️ 贴纸</option><option value="玩偶">🧸 玩偶</option><option value="服饰">👕 服饰</option><option value="文具">✏️ 文具</option><option value="其他">✨ 其他</option>
+        </select>
+        <input type="text" id="custom-category" placeholder="自定义" class="w-28 p-3 rounded-2xl bg-black/30 border border-white/20 text-white">
+      </div>
+      <div id="goodie-image-area" class="border-2 border-dashed border-white/30 rounded-2xl p-4 text-center cursor-pointer">
+        <input type="file" id="goodie-image-input" accept="image/*" class="hidden">
+        <i class="fa fa-image text-2xl text-white/50"></i>
+        <p class="text-sm text-white/60 mt-1" id="goodie-preview-text">点击上传周边照片 (必填)</p>
+        <img id="goodie-image-preview" class="max-h-32 mx-auto mt-2 hidden rounded-xl">
+      </div>
+      <div class="flex gap-3">
+        <button id="cancel-goodie" class="flex-1 py-3 bg-white/10 rounded-2xl">取消</button>
+        <button id="submit-goodie" class="flex-1 py-3 gradient-bg rounded-2xl font-bold">炫耀</button>
+      </div>
+      <p id="goodie-status" class="text-xs text-center text-white/50"></p>
+    </div>
+  </div>
+
+  <div id="goodies-grid" class="grid-cards"></div>
+  <div id="loading-more" class="text-center py-4 text-white/50">加载中…</div>
+</div>
+
+<div class="bottom-nav">
+  <a href="home.html" class="nav-item"><i class="fa fa-home"></i><span>首页</span></a>
+  <a href="overtime.html" class="nav-item"><i class="fa fa-clock-o"></i><span>拖堂</span></a>
+  <a href="court.html" class="nav-item"><i class="fa fa-gavel"></i><span>审判</span></a>
+  <a href="forum.html" class="nav-item"><i class="fa fa-comments"></i><span>论坛</span></a>
+  <a href="profile.html" class="nav-item"><i class="fa fa-user"></i><span>我的</span></a>
+</div>
+
+<script>
+  (function() {
+    const SUPABASE_URL = 'https://jbwmyqvlujytnjpgsqed.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_RSF_RRme6hI32KQqXBtWlA_httMuqbe';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const BUCKET_NAME = 'goodies';
+    let user = null;
+    supabase.auth.getUser().then(({ data }) => { user = data.user; updateUIBasedOnAuth(); });
+    function updateUIBasedOnAuth() { const btn = document.getElementById('show-form-btn'); if (!user) { btn.innerHTML = '<i class="fa fa-lock"></i> 登录后分享'; btn.classList.add('opacity-60'); btn.onclick = () => alert('请先登录'); } else { btn.onclick = () => document.getElementById('publish-form').classList.remove('hidden'); } }
+
+    async function loadGoodies() {
+      const grid = document.getElementById('goodies-grid');
+      const loading = document.getElementById('loading-more');
+      const { data, error } = await supabase.from('goodies').select('*').eq('status', 'approved').order('created_at', { ascending: false }).limit(50);
+      loading.style.display = 'none';
+      if (error) { grid.innerHTML = '<p class="col-span-full text-center text-red-300">加载失败</p>'; return; }
+      if (!data || data.length === 0) { grid.innerHTML = '<p class="col-span-full text-center text-white/50 py-8">还没有人分享周边</p>'; return; }
+      const userIds = [...new Set(data.map(item => item.user_id).filter(Boolean))];
+      let nickMap = {};
+      if (userIds.length > 0) { const { data: profilesData } = await supabase.from('profiles').select('id, nickname').in('id', userIds); profilesData?.forEach(p => { nickMap[p.id] = p.nickname || '小志志_未知'; }); }
+      grid.innerHTML = data.map(item => `
+        <div class="glass rounded-2xl overflow-hidden p-4">
+          ${item.image_url ? `<img src="${item.image_url}" class="w-full h-32 object-cover rounded-xl mb-3" onerror="this.style.display='none'">` : ''}
+          <h3 class="font-bold text-lg">${escapeHtml(item.name)}</h3>
+          <span class="inline-block bg-pink-500/30 text-xs px-2 py-0.5 rounded-full mb-2">${escapeHtml(item.category || '其他')}</span>
+          <p class="text-white/80 text-sm">${escapeHtml(item.description)}</p>
+          <div class="text-white/40 text-xs mt-3">${new Date(item.created_at).toLocaleDateString()} · ${escapeHtml(nickMap[item.user_id] || '小志志_未知')}</div>
+          <button onclick="shareItem('goodie',${item.id})" class="text-xs text-pink-300 mt-2"><i class="fa fa-share-alt"></i> 分享</button>
+        </div>`).join('');
+    }
+
+    // ---------- 发布（含违禁词检测） ----------
+    document.getElementById('submit-goodie').onclick = async () => {
+      if (!user) return alert('请先登录');
+      const name = document.getElementById('goodie-name').value.trim();
+      const desc = document.getElementById('goodie-desc').value.trim();
+      if (!name || !desc || !selectedImageFile) return alert('请完整填写');
+      const category = document.getElementById('custom-category').value.trim() || document.getElementById('goodie-category').value;
+      const statusEl = document.getElementById('goodie-status');
+      const submitBtn = document.getElementById('submit-goodie');
+
+      const fullText = name + ' ' + desc;
+      if (await checkAndHandleViolation(supabase, user, fullText, 'goodie')) {
+        statusEl.textContent = '内容含有违禁词，已被阻止';
+        return;
+      }
+
+      submitBtn.disabled = true;
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
+      if (!accessToken) { alert('登录过期'); window.location.href = 'auth.html'; return; }
+      statusEl.textContent = '上传图片中...';
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(2,8)}.${selectedImageFile.name.split('.').pop()}`;
+      let imageUrl = null;
+      try {
+        await new Promise((resolve, reject) => {
+          const upload = new tus.Upload(selectedImageFile, {
+            endpoint: `${SUPABASE_URL}/storage/v1/upload/resumable`,
+            headers: { authorization: `Bearer ${accessToken}`, 'x-upsert': 'true' },
+            metadata: { bucketName: BUCKET_NAME, objectName: fileName, contentType: selectedImageFile.type },
+            onError: reject, onSuccess: () => { imageUrl = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET_NAME}/${fileName}`; resolve(); }
+          }); upload.start();
+        });
+      } catch (e) { alert('图片上传失败'); submitBtn.disabled = false; return; }
+
+      statusEl.textContent = '发布中...';
+      const { data: profileData } = await supabase.from('profiles').select('nickname').eq('id', user.id).single();
+      const nickname = profileData?.nickname || '小志志_未知';
+      const { error } = await supabase.from('goodies').insert({ user_id: user.id, name, description: desc, category, image_url: imageUrl, nickname });
+      if (error) alert('发布失败: ' + error.message);
+      else { alert('炫耀成功！'); document.getElementById('publish-form').classList.add('hidden'); resetForm(); loadGoodies(); }
+      submitBtn.disabled = false; statusEl.textContent = '';
+    };
+
+    let selectedImageFile = null;
+    const imageInput = document.getElementById('goodie-image-input');
+    const preview = document.getElementById('goodie-image-preview');
+    const previewText = document.getElementById('goodie-preview-text');
+    document.getElementById('goodie-image-area').onclick = () => imageInput.click();
+    imageInput.onchange = (e) => { if (e.target.files[0]) { selectedImageFile = e.target.files[0]; previewText.textContent = selectedImageFile.name; const reader = new FileReader(); reader.onload = (ev) => { preview.src = ev.target.result; preview.classList.remove('hidden'); }; reader.readAsDataURL(selectedImageFile); } };
+    document.getElementById('cancel-goodie').onclick = () => { document.getElementById('publish-form').classList.add('hidden'); resetForm(); };
+    function resetForm() { document.getElementById('goodie-name').value = ''; document.getElementById('goodie-desc').value = ''; document.getElementById('custom-category').value = ''; imageInput.value = ''; selectedImageFile = null; preview.classList.add('hidden'); previewText.textContent = '点击上传周边照片 (必填)'; document.getElementById('goodie-status').textContent = ''; }
+
+    loadGoodies();
+  })();
+</script>
+</body>
+</html>

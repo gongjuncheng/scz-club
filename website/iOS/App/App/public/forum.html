@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>论坛 · 孙春志后援会</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tus-js-client@3.1.3/dist/tus.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css">
+  <script src="common.js"></script>
+  <style>
+    body { background: #0b0710; font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+    .glass { background: rgba(255,255,255,0.08); backdrop-filter: blur(15px); border: 1px solid rgba(255,200,240,0.15); }
+    .gradient-bg { background: linear-gradient(135deg, #d43f8d, #6a1b4d); }
+    .bottom-nav { position: fixed; bottom: 0; left: 0; width: 100%; background: rgba(20,10,30,0.7); backdrop-filter: blur(20px); border-top: 1px solid rgba(255,255,255,0.1); padding: 10px 24px; display: flex; justify-content: space-around; z-index: 50; }
+    .nav-item { display: flex; flex-direction: column; align-items: center; color: rgba(255,255,240,0.6); font-size: 0.75rem; text-decoration: none; }
+    .nav-item.active { color: #ffb0d9; }
+    .nav-item i { font-size: 1.6rem; margin-bottom: 2px; }
+    .post-card { border-radius: 24px; padding: 16px; margin-bottom: 12px; }
+    .post-image { max-height: 200px; object-fit: cover; border-radius: 16px; margin-top: 8px; cursor: pointer; }
+    .comment-section { margin-top: 12px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.1); }
+    .comment-item { padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .comment-input { background: rgba(0,0,0,0.3); border-radius: 40px; padding: 10px 16px; border: 1px solid rgba(255,255,255,0.1); color: white; width: 100%; }
+  </style>
+</head>
+<body class="text-white pb-20">
+
+<div class="container mx-auto px-4 pt-6 max-w-2xl">
+  <div class="flex items-center justify-between mb-4">
+    <h1 class="text-3xl font-extrabold tracking-wide">💬 后援会论坛</h1>
+    <button id="show-form-btn" class="glass px-4 py-2 rounded-full text-sm flex items-center gap-2"><i class="fa fa-plus"></i> 发帖</button>
+  </div>
+
+  <div id="publish-form" class="glass rounded-3xl p-5 mb-6 hidden">
+    <h2 class="text-lg font-semibold mb-4">发表新帖</h2>
+    <div class="space-y-4">
+      <div class="flex items-center gap-2"><span class="text-sm text-white/60">昵称：</span><span id="display-nickname" class="font-semibold text-pink-300">加载中...</span><a href="profile.html" class="text-xs text-white/40 underline ml-auto">修改</a></div>
+      <textarea id="post-content" placeholder="说点什么… (必填)" class="w-full p-3 rounded-2xl bg-black/30 border border-white/20 text-white" rows="3"></textarea>
+      <div id="post-image-area" class="border-2 border-dashed border-white/30 rounded-2xl p-4 text-center cursor-pointer hover:border-pink-400 transition">
+        <input type="file" id="post-image-input" accept="image/*" class="hidden">
+        <i class="fa fa-camera text-2xl text-white/50"></i>
+        <p class="text-sm text-white/60 mt-1" id="post-preview-text">点击上传图片 (可选)</p>
+        <img id="post-image-preview" class="max-h-32 mx-auto mt-2 hidden rounded-xl">
+      </div>
+      <div class="flex gap-3"><button id="cancel-post" class="flex-1 py-3 bg-white/10 rounded-2xl">取消</button><button id="submit-post" class="flex-1 py-3 gradient-bg rounded-2xl font-bold">发布</button></div>
+      <p id="post-status" class="text-xs text-center text-white/50"></p>
+    </div>
+  </div>
+
+  <div id="posts-container" class="space-y-3"></div>
+  <div id="loading-more" class="text-center py-4 text-white/50">加载中…</div>
+</div>
+
+<div class="bottom-nav">
+  <a href="home.html" class="nav-item"><i class="fa fa-home"></i><span>首页</span></a>
+  <a href="overtime.html" class="nav-item"><i class="fa fa-clock-o"></i><span>拖堂</span></a>
+  <a href="court.html" class="nav-item"><i class="fa fa-gavel"></i><span>审判</span></a>
+  <a href="forum.html" class="nav-item active"><i class="fa fa-comments"></i><span>论坛</span></a>
+  <a href="profile.html" class="nav-item"><i class="fa fa-user"></i><span>我的</span></a>
+</div>
+
+<script>
+  (function() {
+    const SUPABASE_URL = 'https://jbwmyqvlujytnjpgsqed.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_RSF_RRme6hI32KQqXBtWlA_httMuqbe';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const BUCKET_NAME = 'forum_images';
+    let user = null;
+    let posts = [];
+    let commentsMap = new Map();
+    let userLikes = { posts: new Set(), comments: new Set() };
+
+    async function getNickname() { if (!user) return '小志志_未知'; const { data } = await supabase.from('profiles').select('nickname').eq('id', user.id).single(); return data?.nickname || '小志志_未知'; }
+    async function updateNicknameDisplay() { document.getElementById('display-nickname').textContent = await getNickname(); }
+
+    supabase.auth.getUser().then(async ({ data }) => { user = data.user; updateUIBasedOnAuth(); if (user) { await updateNicknameDisplay(); loadUserLikes(); loadPosts(); } });
+    function updateUIBasedOnAuth() { const btn = document.getElementById('show-form-btn'); if (!user) { btn.innerHTML = '<i class="fa fa-lock"></i> 登录后发帖'; btn.classList.add('opacity-60'); btn.onclick = () => alert('请先登录'); } else { btn.onclick = () => { document.getElementById('publish-form').classList.remove('hidden'); updateNicknameDisplay(); }; } }
+
+    async function loadUserLikes() {
+      if (!user) return;
+      const { data } = await supabase.from('user_likes').select('target_type, target_id').eq('user_id', user.id);
+      userLikes.posts.clear(); userLikes.comments.clear();
+      data?.forEach(like => { if (like.target_type === 'post') userLikes.posts.add(like.target_id); else userLikes.comments.add(like.target_id); });
+    }
+
+    async function loadPosts() {
+      const container = document.getElementById('posts-container');
+      const { data, error } = await supabase.from('posts').select('*').eq('status', 'approved').order('created_at', { ascending: false }).limit(50);
+      if (error || !data || data.length === 0) { container.innerHTML = '<p class="text-center text-white/50 py-8">还没有帖子</p>'; return; }
+      posts = data;
+      const postIds = posts.map(p => p.id);
+      const { data: commentsData } = await supabase.from('comments').select('*').eq('status', 'approved').in('post_id', postIds).order('created_at', { ascending: true });
+      commentsMap.clear(); postIds.forEach(id => commentsMap.set(id, []));
+      commentsData?.forEach(c => commentsMap.get(c.post_id).push(c));
+      const userIds = [...new Set([...posts.map(p => p.user_id), ...(commentsData || []).map(c => c.user_id)])];
+      const { data: profilesData } = await supabase.from('profiles').select('id, nickname').in('id', userIds);
+      const nickMap = {}; profilesData?.forEach(p => nickMap[p.id] = p.nickname || '小志志_未知');
+      renderPosts(nickMap);
+    }
+
+    function renderPosts(nickMap) {
+      const container = document.getElementById('posts-container');
+      container.innerHTML = posts.map(post => {
+        const postNickname = nickMap[post.user_id] || post.nickname || '小志志_未知';
+        const isLiked = userLikes.posts.has(post.id);
+        const comments = commentsMap.get(post.id) || [];
+        return `<div class="post-card glass" id="post-${post.id}">
+          <div class="flex items-start gap-3">
+            <div class="w-10 h-10 rounded-full gradient-bg flex items-center justify-center font-bold">${escapeHtml(postNickname.charAt(0)||'?')}</div>
+            <div class="flex-1">
+              <div class="flex items-center gap-2"><span class="font-semibold text-pink-200">${escapeHtml(postNickname)}</span><span class="text-white/40 text-xs">${new Date(post.created_at).toLocaleString()}</span></div>
+              <p class="mt-2 text-white/90 whitespace-pre-wrap">${escapeHtml(post.content)}</p>
+              ${post.image_url?`<img src="${post.image_url}" class="post-image w-full" onclick="window.open('${post.image_url}')">`:''}
+              <div class="flex items-center gap-4 mt-3">
+                <button class="like-btn text-sm ${isLiked?'text-pink-400':'text-white/60'}" data-post-id="${post.id}">❤️ ${post.likes||0}</button>
+                <button class="toggle-comments-btn text-sm text-white/60" data-post-id="${post.id}">💬 ${comments.length}</button>
+                <button onclick="shareItem('post',${post.id})" class="text-xs text-pink-300"><i class="fa fa-share-alt"></i> 分享</button>
+              </div>
+              <div class="comment-section" id="comments-${post.id}" style="display:none;">
+                ${comments.map(c => {
+                  const cn = nickMap[c.user_id] || c.nickname || '小志志_未知';
+                  const cl = userLikes.comments.has(c.id);
+                  return `<div class="comment-item"><div class="flex items-start gap-2"><span class="font-medium text-pink-300 text-sm">${escapeHtml(cn)}</span><span class="text-white/80 text-sm flex-1">${escapeHtml(c.content)}</span><button class="comment-like-btn text-xs ${cl?'text-pink-400':'text-white/50'}" data-comment-id="${c.id}">❤️ ${c.likes||0}</button></div><div class="text-white/30 text-xs mt-1">${new Date(c.created_at).toLocaleTimeString()}</div></div>`;
+                }).join('')}
+                ${user ? `<div class="flex items-center gap-2 mt-3"><input type="text" placeholder="写评论…" class="comment-input" id="comment-input-${post.id}"><button class="send-comment-btn glass px-3 py-2 rounded-full" data-post-id="${post.id}"><i class="fa fa-send"></i></button></div>` : '<p class="text-xs text-white/40 mt-2">登录后可评论</p>'}
+              </div>
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+
+      // 事件绑定
+      container.querySelectorAll('.like-btn').forEach(btn => btn.addEventListener('click', async () => { if (!user) return alert('请先登录'); await toggleLike('post', btn.dataset.postId); }));
+      container.querySelectorAll('.toggle-comments-btn').forEach(btn => btn.addEventListener('click', () => { const d = document.getElementById(`comments-${btn.dataset.postId}`); d.style.display = d.style.display === 'none' ? 'block' : 'none'; }));
+      container.querySelectorAll('.send-comment-btn').forEach(btn => btn.addEventListener('click', async () => { const input = document.getElementById(`comment-input-${btn.dataset.postId}`); const content = input.value.trim(); if (!content) return; await submitComment(btn.dataset.postId, content); input.value = ''; }));
+      container.querySelectorAll('.comment-like-btn').forEach(btn => btn.addEventListener('click', async () => { if (!user) return alert('请先登录'); await toggleLike('comment', btn.dataset.commentId); }));
+    }
+
+    async function toggleLike(type, id) {
+      const existing = await supabase.from('user_likes').select('id').eq('target_type', type).eq('target_id', id).eq('user_id', user.id).maybeSingle();
+      if (existing.data) { await supabase.from('user_likes').delete().eq('id', existing.data.id); if (type==='post') userLikes.posts.delete(id); else userLikes.comments.delete(id); }
+      else { await supabase.from('user_likes').insert({ target_type: type, target_id: id, user_id: user.id }); if (type==='post') userLikes.posts.add(id); else userLikes.comments.add(id); }
+      await loadPosts();
+    }
+
+    async function submitComment(postId, content) {
+      if (!user) return;
+      if (await checkAndHandleViolation(supabase, user, content, 'comment')) return;
+      const nickname = await getNickname();
+      const { error } = await supabase.from('comments').insert({ post_id: postId, user_id: user.id, nickname, content, status: 'approved' });
+      if (!error) { await loadPosts(); document.getElementById(`comments-${postId}`).style.display = 'block'; }
+      else alert('评论失败');
+    }
+
+    // 发帖（含违禁词）
+    document.getElementById('submit-post').onclick = async () => {
+      if (!user) { alert('请先登录'); return; }
+      const content = document.getElementById('post-content').value.trim();
+      if (!content) { alert('内容不能为空'); return; }
+      if (await checkAndHandleViolation(supabase, user, content, 'post')) return;
+
+      const status = document.getElementById('post-status');
+      const btn = document.getElementById('submit-post'); btn.disabled = true;
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
+      if (!accessToken) { alert('登录已过期'); window.location.href = 'auth.html'; return; }
+
+      let imageUrl = null;
+      if (selectedImageFile) {
+        status.textContent = '上传图片中...';
+        const ext = selectedImageFile.name.split('.').pop();
+        const fileName = `${Date.now()}_${Math.random().toString(36).substring(2,8)}.${ext}`;
+        try { await new Promise((resolve, reject) => { const upload = new tus.Upload(selectedImageFile, { endpoint: `${SUPABASE_URL}/storage/v1/upload/resumable`, headers: { authorization: `Bearer ${accessToken}`, 'x-upsert': 'true' }, metadata: { bucketName: BUCKET_NAME, objectName: fileName, contentType: selectedImageFile.type }, onError: reject, onSuccess: () => { imageUrl = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET_NAME}/${fileName}`; resolve(); } }); upload.start(); }); } catch (e) { alert('图片上传失败'); btn.disabled = false; status.textContent = ''; return; }
+      }
+
+      status.textContent = '发布中...';
+      const currentNickname = await getNickname();
+      const { error } = await supabase.from('posts').insert({ user_id: user.id, nickname: currentNickname, content, image_url: imageUrl, likes: 0, status: 'approved' });
+      if (error) { alert('发布失败: ' + error.message); }
+      else { alert('发布成功！'); document.getElementById('publish-form').classList.add('hidden'); resetForm(); loadPosts(); }
+      btn.disabled = false; status.textContent = '';
+    };
+
+    let selectedImageFile = null;
+    const imageInput = document.getElementById('post-image-input');
+    const preview = document.getElementById('post-image-preview');
+    const previewText = document.getElementById('post-preview-text');
+    document.getElementById('post-image-area').onclick = () => imageInput.click();
+    imageInput.onchange = (e) => { if (e.target.files[0]) { selectedImageFile = e.target.files[0]; previewText.textContent = selectedImageFile.name; const reader = new FileReader(); reader.onload = (ev) => { preview.src = ev.target.result; preview.classList.remove('hidden'); }; reader.readAsDataURL(selectedImageFile); } };
+    document.getElementById('cancel-post').onclick = () => { document.getElementById('publish-form').classList.add('hidden'); resetForm(); };
+    function resetForm() { document.getElementById('post-content').value = ''; imageInput.value = ''; selectedImageFile = null; preview.classList.add('hidden'); previewText.textContent = '点击上传图片 (可选)'; document.getElementById('post-status').textContent = ''; }
+
+    loadPosts();
+  })();
+</script>
+</body>
+</html>

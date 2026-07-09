@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>孙春志官方粉丝后援会</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0a0612;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'PingFang SC', 'Microsoft YaHei', 'Noto Serif SC', 'STSong', 'SimSun', 'KaiTi', serif;
+            overflow: hidden;
+            cursor: default;
+        }
+        .bg-particles { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+        .bg-particle {
+            position: absolute;
+            background: radial-gradient(circle, #d43f8d44 0%, transparent 70%);
+            border-radius: 50%;
+            animation: floatUp linear infinite;
+        }
+        @keyframes floatUp {
+            0% { transform: translateY(100vh) scale(0); opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 0.6; }
+            100% { transform: translateY(-10vh) scale(1.5); opacity: 0; }
+        }
+        .stage {
+            position: relative; z-index: 10; width: 100%; max-width: 700px;
+            padding: 40px 24px; display: flex; flex-direction: column; align-items: center; gap: 0;
+        }
+        .line {
+            font-size: clamp(1.2rem, 3.5vw, 1.8rem);
+            color: #e8d0e0;
+            text-align: center;
+            letter-spacing: 2px;
+            line-height: 2;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.7s ease, transform 0.7s ease;
+            width: 100%;
+            text-shadow: 0 0 15px rgba(212, 63, 141, 0.3);
+        }
+        .line.visible { opacity: 1; transform: translateY(0); }
+        .line.right { text-align: right; padding-right: 10%; }
+        .line.signature { color: #ffb0d9; font-weight: bold; font-size: clamp(1rem, 3vw, 1.4rem); letter-spacing: 3px; text-shadow: 0 0 20px rgba(255, 176, 217, 0.5); }
+        .line.date { color: #c090b0; font-size: clamp(0.9rem, 2.5vw, 1.2rem); letter-spacing: 4px; }
+        .skip-btn {
+            position: fixed; bottom: 40px; right: 30px; z-index: 100;
+            background: rgba(255,255,255,0.08); backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.2); color: #c0a0c0;
+            padding: 10px 22px; border-radius: 40px; font-size: 0.85rem;
+            letter-spacing: 2px; cursor: pointer; transition: all 0.3s;
+        }
+        .skip-btn:hover { background: rgba(212,63,141,0.3); border-color: #d43f8d; color: #fff; }
+        .hint { position: fixed; bottom: 44px; left: 30px; color: rgba(255,255,255,0.25); font-size: 0.7rem; letter-spacing: 1px; z-index: 100; }
+        @media (max-width: 480px) {
+            .stage { padding: 30px 16px; }
+            .line.right { padding-right: 5%; }
+            .skip-btn { bottom: 30px; right: 16px; padding: 8px 18px; font-size: 0.75rem; }
+            .hint { bottom: 34px; left: 16px; font-size: 0.65rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-particles" id="bgParticles"></div>
+    <div class="stage" id="stage">
+        <div class="line" data-delay="0">我重生了</div>
+        <div class="line" data-delay="800">这辈子我叫孙小志</div>
+        <div class="line" data-delay="1700">南京市拔牙高级中学教生物</div>
+        <div class="line" data-delay="2600">这是我的日记</div>
+        <div class="line right signature" data-delay="3500">——孙春志官方粉丝后援会</div>
+        <div class="line right date" data-delay="4400">2026 / 6 / 6</div>
+    </div>
+    <button class="skip-btn" id="skipBtn" title="跳过动画">跳过 ▸</button>
+    <span class="hint">按任意键或点击跳过</span>
+
+    <script>
+        (function() {
+            const stage = document.getElementById('stage');
+            const skipBtn = document.getElementById('skipBtn');
+            const bgParticles = document.getElementById('bgParticles');
+            const lines = Array.from(stage.querySelectorAll('.line'));
+            let currentIndex = 0;
+            let isFinished = false;
+            let timers = [];
+
+            for (let i = 0; i < 30; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'bg-particle';
+                const size = Math.random() * 4 + 2;
+                particle.style.width = size + 'px';
+                particle.style.height = size + 'px';
+                particle.style.left = Math.random() * 100 + '%';
+                particle.style.animationDuration = Math.random() * 8 + 6 + 's';
+                particle.style.animationDelay = Math.random() * 10 + 's';
+                bgParticles.appendChild(particle);
+            }
+
+            function showNextLine() {
+                if (currentIndex >= lines.length) { finishAndGo(); return; }
+                const timer = setTimeout(() => {
+                    lines[currentIndex].classList.add('visible');
+                    currentIndex++;
+                    showNextLine();
+                }, currentIndex === 0 ? 400 : 700);
+                timers.push(timer);
+            }
+
+            function finishAndGo() {
+                if (isFinished) return;
+                isFinished = true;
+                setTimeout(() => { window.location.replace('home.html'); }, 1200);
+            }
+
+            function skipAnimation() {
+                if (isFinished) return;
+                isFinished = true;
+                timers.forEach(t => clearTimeout(t));
+                lines.forEach(line => { line.classList.add('visible'); line.style.transition = 'opacity 0.2s ease, transform 0.2s ease'; });
+                setTimeout(() => { window.location.replace('home.html'); }, 500);
+            }
+
+            skipBtn.addEventListener('click', skipAnimation);
+            document.addEventListener('keydown', (e) => { if (e.key !== 'F5' && e.key !== 'F12' && !e.ctrlKey && !e.metaKey) skipAnimation(); });
+            stage.addEventListener('click', (e) => { if (e.target !== skipBtn) skipAnimation(); });
+            document.addEventListener('touchstart', (e) => { if (e.target !== skipBtn) skipAnimation(); }, { once: true });
+            showNextLine();
+            setTimeout(() => { if (!isFinished) skipAnimation(); }, 10000);
+        })();
+    </script>
+</body>
+</html>
