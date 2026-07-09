@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>管理员面板 · 孙春志后援会</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body { background: #0b0710; font-family: 'PingFang SC', sans-serif; color: #f0d0e0; padding: 20px; }
+    .container { max-width: 900px; margin: 0 auto; }
+    h1 { color: #ffb0d9; text-align: center; }
+    .card { background: rgba(255,255,255,0.08); backdrop-filter: blur(15px); border: 1px solid rgba(255,200,240,0.15); border-radius: 24px; padding: 20px; margin-bottom: 20px; }
+    h2 { color: #ffc1e0; margin-bottom: 12px; }
+    input, select, textarea { width: 100%; padding: 10px 14px; margin: 6px 0; background: #1e122a; border: 1px solid #5a2a4a; border-radius: 40px; color: white; font-size: 0.9rem; }
+    textarea { border-radius: 20px; resize: vertical; }
+    button { background: linear-gradient(135deg, #d43f8d, #6a1b4d); color: white; border: none; padding: 10px 18px; border-radius: 40px; cursor: pointer; margin: 4px; font-weight: bold; }
+    button:hover { opacity: 0.9; }
+    button.danger { background: #c0392b; }
+    button.success { background: #27ae60; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+    .word-tag { display: inline-block; background: #d43f8d44; padding: 4px 10px; border-radius: 20px; margin: 4px; font-size: 0.8rem; }
+    .login-box { max-width: 400px; margin: 80px auto; text-align: center; }
+    .msg { text-align: center; font-size: 0.85rem; min-height: 20px; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+<div class="container" id="app">
+  <!-- 登录 -->
+  <div id="login-section" class="card login-box">
+    <h2>🔐 管理员登录</h2>
+    <input type="email" id="admin-email" placeholder="管理员邮箱">
+    <input type="password" id="admin-password" placeholder="密码">
+    <button onclick="adminLogin()">登录</button>
+    <div class="msg" id="login-msg"></div>
+  </div>
+
+  <!-- 管理面板 -->
+  <div id="panel" class="hidden">
+    <h1>👑 管理员面板</h1>
+    <button onclick="logout()" style="background:rgba(255,255,255,0.2);">退出</button>
+
+    <!-- 用户管理 -->
+    <div class="card">
+      <h2>👥 用户管理</h2>
+      <input type="text" id="search-email" placeholder="输入用户邮箱搜索">
+      <button onclick="searchUser()">搜索</button>
+      <div id="user-result" style="margin-top:12px;"></div>
+    </div>
+
+    <!-- 违禁词管理 -->
+    <div class="card">
+      <h2>🚫 违禁词管理</h2>
+      <div style="display:flex;gap:8px;">
+        <input type="text" id="new-word" placeholder="新违禁词">
+        <input type="text" id="word-category" placeholder="分类 (可选)" style="max-width:120px;">
+        <button onclick="addBannedWord()">添加</button>
+      </div>
+      <div id="words-list" style="margin-top:12px;"></div>
+    </div>
+
+    <!-- 申诉处理 -->
+    <div class="card">
+      <h2>📬 申诉处理</h2>
+      <div id="appeals-list"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function() {
+    const SUPABASE_URL = 'https://jbwmyqvlujytnjpgsqed.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_RSF_RRme6hI32KQqXBtWlA_httMuqbe';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    let currentUser = null;
+
+    function escapeHtml(text) { return String(text).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#039;' })[c]); }
+
+    // 检查管理员权限
+    async function checkAdmin(user) {
+      const { data: profile } = await supabase.from('profiles').select('is_committee').eq('id', user.id).single();
+      return profile?.is_committee === true;
+    }
+
+    // 管理员登录
+    window.adminLogin = async function() {
+      const email = document.getElementById('admin-email').value.trim();
+      const password = document.getElementById('admin-password').value;
+      const msg = document.getElementById('login-msg');
+      if (!email || !password) { msg.textContent = '请填写完整'; return; }
+      msg.textContent = '登录中...';
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) { msg.textContent = '❌ ' + error.message; return; }
+      if (!(await checkAdmin(data.user))) { msg.textContent = '❌ 非管理员账户'; await supabase.auth.signOut(); return; }
+      currentUser = data.user;
+      document.getElementById('login-section').classList.add('hidden');
+      document.getElementById('panel').classList.remove('hidden');
+      loadWords(); loadAppeals();
+    };
+
+    window.logout = async function() {
+      await supabase.auth.signOut();
+      currentUser = null;
+      document.getElementById('login-section').classList.remove('hidden');
+      document.getElementById('panel').classList.add('hidden');
+    };
+
+    // 搜索用户并封号
+    window.searchUser = async function() {
+      const email = document.getElementById('search-email').value.trim();
+      const container = document.getElementById('user-result');
+      if (!email) return;
+      container.innerHTML = '搜索中...';
+      const { data: { users }, error } = await supabase.auth.admin.listUsers();
+      const userIds = (users || []).filter(u => u.email === email).map(u => u.id);
+      if (userIds.length === 0) { container.innerHTML = '未找到该用户'; return; }
+      const userId = userIds[0];
+      const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).single();
+      const isBanned = profile?.ban_until && new Date(profile.ban_until) > new Date();
+      container.innerHTML = `<div style="background:rgba(0,0,0,0.3);padding:12px;border-radius:16px;">
+        <p><strong>邮箱：</strong>${escapeHtml(email)}</p>
+        <p><strong>昵称：</strong>${escapeHtml(profile?.nickname || '未设置')}</p>
+        <p><strong>UUID：</strong>${userId}</p>
+        <p><strong>状态：</strong>${isBanned ? '已封禁' : '正常'}</p>
+        <input type="text" id="ban-reason" placeholder="封禁理由" style="width:100%;margin:8px 0;">
+        <select id="ban-duration"><option value="24">24小时</option><option value="72">3天</option><option value="168">7天</option><option value="0">永久封禁</option></select>
+        <button class="danger" onclick="banUser('${userId}')">封禁</button>
+        <button class="success" onclick="unbanUser('${userId}')">解封</button>
+      </div>`;
+    };
+
+    window.banUser = async function(userId) {
+      const reason = document.getElementById('ban-reason').value.trim();
+      const hours = parseInt(document.getElementById('ban-duration').value);
+      if (!reason) return alert('请填写封禁理由');
+      const expiresAt = hours > 0 ? new Date(Date.now() + hours * 3600000).toISOString() : null;
+      await supabase.from('profiles').update({ ban_until: expiresAt || null, ban_reason: reason }).eq('id', userId);
+      await supabase.from('bans').insert({ user_id: userId, banned_by: currentUser.id, reason, ban_type: hours > 0 ? 'temporary' : 'permanent', duration_hours: hours || null, expires_at: expiresAt });
+      alert('封禁成功');
+      searchUser();
+    };
+
+    window.unbanUser = async function(userId) {
+      await supabase.from('profiles').update({ ban_until: null, ban_reason: null }).eq('id', userId);
+      await supabase.from('bans').update({ is_active: false }).eq('user_id', userId).eq('is_active', true);
+      alert('已解封');
+      searchUser();
+    };
+
+    // 违禁词管理
+    async function loadWords() {
+      const { data } = await supabase.from('banned_words').select('*').order('category');
+      const container = document.getElementById('words-list');
+      if (!data || data.length === 0) { container.innerHTML = '<p style="color:#aaa;">暂无违禁词</p>'; return; }
+      container.innerHTML = data.map(w => `<span class="word-tag">${escapeHtml(w.word)} <small style="opacity:0.6;">[${escapeHtml(w.category||'通用')}]</small> <button onclick="deleteWord(${w.id})" style="background:transparent;color:#ff6b6b;padding:0 4px;">✕</button></span>`).join('');
+    }
+
+    window.addBannedWord = async function() {
+      const word = document.getElementById('new-word').value.trim();
+      const category = document.getElementById('word-category').value.trim() || '通用';
+      if (!word) return alert('请输入违禁词');
+      const { error } = await supabase.from('banned_words').insert({ word, category, created_by: currentUser.id });
+      if (error) alert('添加失败: ' + error.message);
+      else { document.getElementById('new-word').value = ''; loadWords(); }
+    };
+
+    window.deleteWord = async function(id) {
+      await supabase.from('banned_words').delete().eq('id', id);
+      loadWords();
+    };
+
+    // 申诉处理
+    async function loadAppeals() {
+      const { data } = await supabase.from('bans').select('*').eq('is_active', true).not('appeal_text', 'is', null).order('banned_at', { ascending: false });
+      const container = document.getElementById('appeals-list');
+      if (!data || data.length === 0) { container.innerHTML = '<p style="color:#aaa;">暂无待处理的申诉</p>'; return; }
+      container.innerHTML = data.map(b => `
+        <div style="border:1px solid #444;border-radius:12px;padding:12px;margin-bottom:8px;">
+          <p><strong>用户ID：</strong>${escapeHtml(b.user_id.substring(0,8))}...</p>
+          <p><strong>封禁理由：</strong>${escapeHtml(b.reason)}</p>
+          <p><strong>申诉内容：</strong>${escapeHtml(b.appeal_text || '无')}</p>
+          <p><strong>申诉次数：</strong>${b.appeal_count}</p>
+          <button class="success" onclick="handleAppeal(${b.id},'approved')">✅ 批准解封</button>
+          <button class="danger" onclick="handleAppeal(${b.id},'rejected')">❌ 驳回申诉</button>
+        </div>`).join('');
+    }
+
+    window.handleAppeal = async function(banId, status) {
+      await supabase.from('bans').update({ appeal_status: status }).eq('id', banId);
+      if (status === 'approved') {
+        const { data: ban } = await supabase.from('bans').select('user_id').eq('id', banId).single();
+        if (ban) {
+          await supabase.from('profiles').update({ ban_until: null, ban_reason: null }).eq('id', ban.user_id);
+          await supabase.from('bans').update({ is_active: false }).eq('id', banId);
+        }
+      }
+      alert(status === 'approved' ? '已批准解封' : '已驳回申诉');
+      loadAppeals();
+    };
+
+    // 初始化
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        checkAdmin(session.user).then(isAdmin => {
+          if (isAdmin) {
+            currentUser = session.user;
+            document.getElementById('login-section').classList.add('hidden');
+            document.getElementById('panel').classList.remove('hidden');
+            loadWords(); loadAppeals();
+          }
+        });
+      }
+    });
+  })();
+</script>
+</body>
+</html>

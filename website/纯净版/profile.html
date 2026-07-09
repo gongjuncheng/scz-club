@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>个人中心 · 孙春志后援会</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css">
+  <script src="common.js"></script>
+  <style>
+    body { background: #0b0710; font-family: 'PingFang SC', sans-serif; }
+    .glass { background: rgba(255,255,255,0.08); backdrop-filter: blur(15px); border: 1px solid rgba(255,200,240,0.15); }
+    .gradient-bg { background: linear-gradient(135deg, #d43f8d, #6a1b4d); }
+    .bottom-nav { position: fixed; bottom: 0; left: 0; width: 100%; background: rgba(20,10,30,0.7); backdrop-filter: blur(20px); border-top: 1px solid rgba(255,255,255,0.1); padding: 10px 24px; display: flex; justify-content: space-around; z-index: 50; }
+    .nav-item { display: flex; flex-direction: column; align-items: center; color: rgba(255,255,240,0.6); font-size: 0.75rem; text-decoration: none; }
+    .nav-item.active { color: #ffb0d9; }
+    .nav-item i { font-size: 1.6rem; margin-bottom: 2px; }
+    .tab-btn { flex: 1; padding: 8px 0; text-align: center; border-radius: 40px; background: transparent; color: #d0b0d0; }
+    .tab-btn.active { background: #d43f8d; color: white; }
+    .history-item { padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .uuid-text { font-size: 0.7rem; opacity: 0.6; word-break: break-all; }
+    .nickname-display { font-size: 1.25rem; font-weight: bold; color: #ffb0d9; }
+    .gear-btn { color: #c0a0c0; cursor: pointer; transition: 0.2s; font-size: 1.2rem; margin-left: 4px; }
+    .gear-btn:hover { color: #ffb0d9; }
+    .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); backdrop-filter: blur(5px); z-index: 200; display: none; align-items: center; justify-content: center; padding: 20px; }
+    .modal-card { background: rgba(20,10,30,0.95); border: 1px solid rgba(255,200,240,0.2); border-radius: 24px; padding: 24px; max-width: 420px; width: 100%; max-height: 90vh; overflow-y: auto; }
+    .modal-card h3 { color: #ffb0d9; margin-bottom: 16px; text-align: center; }
+    .modal-card input { width: 100%; padding: 12px 14px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,200,240,0.2); border-radius: 40px; color: white; margin-bottom: 10px; }
+    .modal-card button { width: 100%; padding: 12px; border-radius: 40px; font-weight: bold; border: none; cursor: pointer; margin-top: 6px; }
+    .ban-info { background: rgba(255,0,0,0.15); border: 1px solid #ff4444; border-radius: 16px; padding: 12px 16px; margin-bottom: 16px; font-size: 0.85rem; }
+  </style>
+</head>
+<body class="text-white pb-20">
+
+<div class="container mx-auto px-4 pt-6 max-w-2xl">
+
+  <!-- 封禁信息 -->
+  <div id="ban-info" class="ban-info hidden">
+    <p class="font-bold text-red-400">⚠️ 你的账户已被封禁</p>
+    <p class="text-white/80 text-sm mt-1" id="ban-reason"></p>
+    <p class="text-white/60 text-xs mt-1" id="ban-duration"></p>
+    <button onclick="window.location.href='appeal.html'" class="mt-2 bg-red-500/50 text-white px-4 py-1 rounded-full text-xs">提交申诉</button>
+  </div>
+
+  <!-- 用户信息卡片 -->
+  <div class="glass rounded-3xl p-6 mb-6">
+    <div class="flex items-center gap-4">
+      <div class="w-16 h-16 rounded-full gradient-bg flex items-center justify-center text-2xl font-bold">
+        <i class="fa fa-user"></i>
+      </div>
+      <div class="flex-1 overflow-hidden">
+        <div class="flex items-center gap-1">
+          <span class="nickname-display" id="nickname-text">加载中...</span>
+          <i class="fa fa-gear gear-btn" id="settings-gear" onclick="toggleSettings()" title="账户设置"></i>
+        </div>
+        <p class="text-white/60 text-sm" id="user-email">加载中...</p>
+        <p class="uuid-text" id="user-uuid">加载中...</p>
+      </div>
+      <button id="logout-btn" class="glass px-4 py-2 rounded-full text-sm text-pink-200"><i class="fa fa-sign-out"></i> 退出</button>
+    </div>
+  </div>
+
+  <!-- 历史发布内容标签页 -->
+  <div class="glass rounded-3xl p-4">
+    <div class="flex gap-2 mb-4 overflow-x-auto">
+      <button data-tab="overtime" class="tab-btn active">拖堂</button>
+      <button data-tab="outfits" class="tab-btn">穿搭</button>
+      <button data-tab="goodies" class="tab-btn">好物</button>
+      <button data-tab="memes" class="tab-btn">表情包</button>
+      <button data-tab="posts" class="tab-btn">帖子</button>
+    </div>
+    <div id="history-content" class="max-h-96 overflow-y-auto">
+      <p class="text-center text-white/50 py-4">加载中...</p>
+    </div>
+  </div>
+</div>
+
+<!-- 设置面板 -->
+<div class="modal-overlay" id="settings-modal">
+  <div class="modal-card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <h3 style="margin:0;">⚙️ 账户设置</h3>
+      <button onclick="toggleSettings()" style="background:transparent;border:none;color:white;font-size:1.5rem;cursor:pointer;width:auto;">&times;</button>
+    </div>
+    <label class="text-white/70 text-sm">修改昵称</label>
+    <div style="display:flex;gap:8px;">
+      <input type="text" id="new-nickname" placeholder="新昵称" maxlength="20" style="flex:1;">
+      <button onclick="updateNickname()" class="gradient-bg" style="width:auto;padding:12px 16px;">保存</button>
+    </div>
+    <label class="text-white/70 text-sm mt-3">修改邮箱（需要输入原密码）</label>
+    <input type="password" id="current-password-email" placeholder="原密码">
+    <input type="email" id="new-email" placeholder="新邮箱">
+    <button onclick="updateEmail()" class="gradient-bg">修改邮箱</button>
+    <label class="text-white/70 text-sm mt-3">修改密码（需要输入原密码）</label>
+    <input type="password" id="current-password-pwd" placeholder="原密码">
+    <input type="password" id="new-password" placeholder="新密码 (至少6位)" minlength="6">
+    <button onclick="updatePassword()" class="gradient-bg">修改密码</button>
+    <p id="settings-msg" class="text-xs text-center mt-3" style="min-height:20px;"></p>
+  </div>
+</div>
+
+<div class="bottom-nav">
+  <a href="home.html" class="nav-item"><i class="fa fa-home"></i><span>首页</span></a>
+  <a href="overtime.html" class="nav-item"><i class="fa fa-clock-o"></i><span>拖堂</span></a>
+  <a href="court.html" class="nav-item"><i class="fa fa-gavel"></i><span>审判</span></a>
+  <a href="forum.html" class="nav-item"><i class="fa fa-comments"></i><span>论坛</span></a>
+  <a href="profile.html" class="nav-item active"><i class="fa fa-user"></i><span>我的</span></a>
+</div>
+
+<script>
+  (function() {
+    const SUPABASE_URL = 'https://jbwmyqvlujytnjpgsqed.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_RSF_RRme6hI32KQqXBtWlA_httMuqbe';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    let user = null;
+    let currentTab = 'overtime';
+
+    // 设置面板
+    function toggleSettings() {
+      const modal = document.getElementById('settings-modal');
+      modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex';
+      document.getElementById('settings-msg').textContent = '';
+    }
+
+    async function updateNickname() {
+      const newNick = document.getElementById('new-nickname').value.trim();
+      if (!newNick || newNick.length > 20) return alert('昵称不能为空且不超过20字');
+      const { error } = await supabase.from('profiles').update({ nickname: newNick }).eq('id', user.id);
+      if (error) { document.getElementById('settings-msg').innerHTML = '<span style="color:#ff6b6b;">修改失败</span>'; return; }
+      document.getElementById('nickname-text').textContent = newNick;
+      document.getElementById('settings-msg').innerHTML = '<span style="color:#6bff6b;">昵称已更新</span>';
+    }
+
+    async function updateEmail() {
+      const currentPwd = document.getElementById('current-password-email').value;
+      const newEmail = document.getElementById('new-email').value.trim();
+      if (!currentPwd || !newEmail) return alert('请填写完整');
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email: user.email, password: currentPwd });
+      if (signInError) { document.getElementById('settings-msg').innerHTML = '<span style="color:#ff6b6b;">原密码错误</span>'; return; }
+      const { error } = await supabase.auth.updateUser({ email: newEmail });
+      if (error) { document.getElementById('settings-msg').innerHTML = `<span style="color:#ff6b6b;">${error.message}</span>`; return; }
+      document.getElementById('user-email').textContent = newEmail;
+      document.getElementById('settings-msg').innerHTML = '<span style="color:#6bff6b;">邮箱已更新，请查收确认邮件</span>';
+    }
+
+    async function updatePassword() {
+      const currentPwd = document.getElementById('current-password-pwd').value;
+      const newPwd = document.getElementById('new-password').value;
+      if (!currentPwd || !newPwd) return alert('请填写完整');
+      if (newPwd.length < 6) return alert('新密码至少6位');
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email: user.email, password: currentPwd });
+      if (signInError) { document.getElementById('settings-msg').innerHTML = '<span style="color:#ff6b6b;">原密码错误</span>'; return; }
+      const { error } = await supabase.auth.updateUser({ password: newPwd });
+      if (error) { document.getElementById('settings-msg').innerHTML = `<span style="color:#ff6b6b;">${error.message}</span>`; return; }
+      document.getElementById('settings-msg').innerHTML = '<span style="color:#6bff6b;">密码已更新</span>';
+    }
+
+    // 挂载到 window，让 onclick 可访问
+    window.toggleSettings = toggleSettings;
+    window.updateNickname = updateNickname;
+    window.updateEmail = updateEmail;
+    window.updatePassword = updatePassword;
+
+    // 检查封禁状态
+    async function checkBanStatus() {
+      const { data: profile } = await supabase.from('profiles').select('ban_until, ban_reason').eq('id', user.id).single();
+      if (profile?.ban_until && new Date(profile.ban_until) > new Date()) {
+        document.getElementById('ban-info').classList.remove('hidden');
+        document.getElementById('ban-reason').textContent = '原因：' + (profile.ban_reason || '未说明');
+        document.getElementById('ban-duration').textContent = '解封时间：' + new Date(profile.ban_until).toLocaleString();
+      }
+    }
+
+    // 加载用户信息
+    async function checkAuth() {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (!currentUser) { window.location.href = 'auth.html'; return; }
+      user = currentUser;
+      document.getElementById('user-email').textContent = user.email;
+      const uuid = user.id;
+      document.getElementById('user-uuid').textContent = 'UUID: ' + uuid.substring(0, 8) + '...' + uuid.substring(uuid.length - 8);
+      const { data: profile } = await supabase.from('profiles').select('nickname').eq('id', user.id).single();
+      document.getElementById('nickname-text').textContent = profile?.nickname || '小志志_未知';
+      document.getElementById('new-nickname').value = profile?.nickname || '';
+      await checkBanStatus();
+      loadTabContent(currentTab);
+    }
+
+    document.getElementById('logout-btn').onclick = async () => { await supabase.auth.signOut(); window.location.href = 'auth.html'; };
+
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.onclick = () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentTab = btn.dataset.tab;
+      loadTabContent(currentTab);
+    });
+
+    async function loadTabContent(type) {
+      const container = document.getElementById('history-content');
+      container.innerHTML = '<p class="text-center py-4">加载中...</p>';
+      if (!user) return;
+      let table;
+      if (type === 'overtime') table = 'overtime_records';
+      else if (type === 'outfits') table = 'outfit_records';
+      else if (type === 'goodies') table = 'goodies';
+      else if (type === 'memes') table = 'memes';
+      else if (type === 'posts') table = 'posts';
+      const { data, error } = await supabase.from(table).select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(50);
+      if (error || !data || data.length === 0) { container.innerHTML = '<p class="text-center py-8">暂无发布内容</p>'; return; }
+      container.innerHTML = data.map(item => {
+        if (type === 'overtime') return `<div class="history-item">${escapeHtml(item.date)} ${escapeHtml(item.session)} ${item.seconds}秒</div>`;
+        if (type === 'outfits') return `<div class="history-item">${escapeHtml(item.date)} - ${escapeHtml(item.description?.substring(0,30) || '')}</div>`;
+        if (type === 'goodies') return `<div class="history-item">${escapeHtml(item.name)} (${escapeHtml(item.category || '')})</div>`;
+        if (type === 'memes') return `<div class="history-item"><img src="${escapeHtml(item.image_url)}" width="40"> ${escapeHtml(item.title || '无标题')}</div>`;
+        if (type === 'posts') return `<div class="history-item">${escapeHtml(item.content?.substring(0,50) || '')}... <span class="text-white/40">${new Date(item.created_at).toLocaleString()}</span></div>`;
+      }).join('');
+    }
+
+    checkAuth();
+  })();
+</script>
+</body>
+</html>

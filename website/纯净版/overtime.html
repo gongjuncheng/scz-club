@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>拖堂记录 · 孙春志后援会</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css">
+  <style>
+    body { background: #0b0710; font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+    .glass { background: rgba(255,255,255,0.08); backdrop-filter: blur(15px); border: 1px solid rgba(255,200,240,0.15); }
+    .gradient-bg { background: linear-gradient(135deg, #d43f8d, #6a1b4d); }
+    .bottom-nav { position: fixed; bottom: 0; left: 0; width: 100%; background: rgba(20,10,30,0.7); backdrop-filter: blur(20px); border-top: 1px solid rgba(255,255,255,0.1); padding: 10px 24px; display: flex; justify-content: space-around; z-index: 50; }
+    .nav-item { display: flex; flex-direction: column; align-items: center; color: rgba(255,255,240,0.6); font-size: 0.75rem; text-decoration: none; }
+    .nav-item.active { color: #ffb0d9; }
+    .nav-item i { font-size: 1.6rem; margin-bottom: 2px; }
+    select, input { color-scheme: dark; }
+  </style>
+</head>
+<body class="text-white pb-20">
+<div class="container mx-auto px-4 pt-6 max-w-2xl">
+  <div class="flex items-center justify-between mb-2">
+    <h1 class="text-3xl font-extrabold tracking-wide">⏱️ 拖堂记录</h1>
+    <span class="text-sm bg-pink-500/30 px-3 py-1 rounded-full">秒级精确</span>
+  </div>
+  <p class="text-white/60 text-sm mb-6">记录孙老师的每一秒额外陪伴 💜</p>
+
+  <div class="glass rounded-3xl p-5 mb-8">
+    <h2 class="text-lg font-semibold mb-4"><i class="fa fa-plus-circle text-pink-300"></i> 记录本次拖堂</h2>
+    <div class="space-y-4">
+      <input type="date" id="record-date" class="w-full p-3 rounded-2xl bg-black/30 border border-white/20 text-white" value="">
+      <div class="relative">
+        <select id="record-session" class="w-full p-3 rounded-2xl bg-black/30 border border-white/20 text-white appearance-none">
+          <optgroup label="上午">
+            <option value="上午第1节">上午第1节</option>
+            <option value="上午第2节">上午第2节</option>
+            <option value="上午第3节">上午第3节</option>
+            <option value="上午第4节">上午第4节</option>
+          </optgroup>
+          <optgroup label="下午">
+            <option value="下午第1节">下午第1节</option>
+            <option value="下午第2节">下午第2节</option>
+            <option value="下午第3节">下午第3节</option>
+            <option value="下午第4节">下午第4节</option>
+          </optgroup>
+          <optgroup label="晚自习">
+            <option value="晚自习第1节">晚自习第1节</option>
+            <option value="晚自习第2节">晚自习第2节</option>
+            <option value="晚自习第3节">晚自习第3节</option>
+            <option value="晚自习第4节">晚自习第4节</option>
+          </optgroup>
+        </select>
+        <i class="fa fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-white/60 pointer-events-none"></i>
+      </div>
+      <div class="relative">
+        <input type="number" id="record-seconds" placeholder="拖堂了多少秒？" class="w-full p-3 rounded-2xl bg-black/30 border border-white/20 text-white pr-16" min="0">
+        <span class="absolute right-4 top-1/2 -translate-y-1/2 text-white/50">秒</span>
+      </div>
+      <input type="text" id="record-reason" placeholder="原因（选填）" class="w-full p-3 rounded-2xl bg-black/30 border border-white/20 text-white">
+      <button id="submit-record" class="w-full py-4 gradient-bg rounded-2xl font-bold text-lg"><i class="fa fa-cloud-upload"></i> 提交记录</button>
+    </div>
+    <p class="text-white/40 text-xs mt-3 text-center">任何人都可以提交，无需登录 ✨</p>
+  </div>
+
+  <div class="flex gap-3 mb-6">
+    <div class="glass flex-1 rounded-2xl p-4 text-center"><div class="text-3xl font-black" id="total-count">0</div><div class="text-xs text-white/60">累计拖堂次数</div></div>
+    <div class="glass flex-1 rounded-2xl p-4 text-center"><div class="text-3xl font-black" id="total-seconds">0</div><div class="text-xs text-white/60">累计秒数</div></div>
+    <div class="glass flex-1 rounded-2xl p-4 text-center"><div class="text-3xl font-black" id="total-hours">0.0</div><div class="text-xs text-white/60">约合小时</div></div>
+  </div>
+
+  <h3 class="text-xl font-bold mb-3"><i class="fa fa-list text-pink-300"></i> 历史拖堂</h3>
+  <div id="records-list" class="space-y-3"></div>
+</div>
+
+<div class="bottom-nav">
+  <a href="home.html" class="nav-item"><i class="fa fa-home"></i><span>首页</span></a>
+  <a href="overtime.html" class="nav-item active"><i class="fa fa-clock-o"></i><span>拖堂</span></a>
+  <a href="court.html" class="nav-item"><i class="fa fa-gavel"></i><span>审判</span></a>
+  <a href="forum.html" class="nav-item"><i class="fa fa-comments"></i><span>论坛</span></a>
+  <a href="profile.html" class="nav-item"><i class="fa fa-user"></i><span>我的</span></a>
+</div>
+
+<script>
+  (function() {
+    const SUPABASE_URL = 'https://jbwmyqvlujytnjpgsqed.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_RSF_RRme6hI32KQqXBtWlA_httMuqbe';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('record-date').value = today;
+
+    function escapeHtml(text) { return String(text).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' })[c]); }
+
+    async function loadRecords() {
+      const { data, error } = await supabase
+        .from('overtime_records')
+        .select('*')
+        .eq('status', 'approved')
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false });
+      if (error) { console.error(error); return; }
+      const listDiv = document.getElementById('records-list');
+      let totalSeconds = 0;
+      if (!data || data.length === 0) {
+        listDiv.innerHTML = '<div class="glass rounded-2xl p-6 text-center text-white/50">暂无拖堂记录</div>';
+      } else {
+        listDiv.innerHTML = data.map(r => {
+          totalSeconds += r.seconds || 0;
+          const minutes = Math.floor((r.seconds || 0) / 60);
+          const secs = (r.seconds || 0) % 60;
+          const timeStr = minutes > 0 ? `${minutes}分${secs}秒` : `${secs}秒`;
+          return `<div class="glass rounded-2xl p-4"><div class="flex items-center gap-2 mb-1"><span class="font-bold text-pink-200">${escapeHtml(r.date)}</span><span class="text-sm bg-white/20 px-2 py-0.5 rounded-full">${escapeHtml(r.session || '未知节次')}</span></div><div class="text-2xl font-black">${r.seconds || 0} <span class="text-sm font-normal text-white/60">秒</span></div>${r.reason ? `<div class="text-sm text-white/60 mt-1">📝 ${escapeHtml(r.reason)}</div>` : ''}</div>`;
+        }).join('');
+      }
+      document.getElementById('total-count').textContent = data?.length || 0;
+      document.getElementById('total-seconds').textContent = totalSeconds;
+      document.getElementById('total-hours').textContent = (totalSeconds / 3600).toFixed(2);
+    }
+
+    document.getElementById('submit-record').onclick = async () => {
+      const date = document.getElementById('record-date').value;
+      const session = document.getElementById('record-session').value;
+      const seconds = parseInt(document.getElementById('record-seconds').value, 10);
+      const reason = document.getElementById('record-reason').value.trim();
+      if (!date || !session || isNaN(seconds) || seconds < 0) return alert('请填写完整');
+      const { error } = await supabase.from('overtime_records').insert([{ date, session, seconds, reason, status: 'approved' }]);
+      if (error) alert('提交失败: ' + error.message);
+      else { document.getElementById('record-seconds').value = ''; document.getElementById('record-reason').value = ''; loadRecords(); alert('✅ 记录成功！'); }
+    };
+
+    loadRecords();
+  })();
+</script>
+</body>
+</html>

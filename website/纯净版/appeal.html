@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>账号申诉 · 孙春志后援会</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body { background: #0b0710; font-family: 'PingFang SC', sans-serif; color: #f0d0e0; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+    .card { background: rgba(255,255,255,0.08); backdrop-filter: blur(15px); border: 1px solid rgba(255,200,240,0.15); border-radius: 24px; padding: 24px; max-width: 460px; width: 100%; }
+    h2 { color: #ffb0d9; text-align: center; margin-bottom: 16px; }
+    input, textarea { width: 100%; padding: 12px 14px; margin: 8px 0; background: #1e122a; border: 1px solid #5a2a4a; border-radius: 40px; color: white; font-size: 0.9rem; }
+    textarea { border-radius: 20px; resize: vertical; }
+    button { background: linear-gradient(135deg, #d43f8d, #6a1b4d); color: white; border: none; padding: 12px; border-radius: 40px; font-weight: bold; width: 100%; cursor: pointer; margin-top: 8px; }
+    .msg { text-align: center; font-size: 0.85rem; margin-top: 12px; min-height: 20px; }
+    .info { background: rgba(255,0,0,0.1); border: 1px solid #ff4444; border-radius: 16px; padding: 12px; margin-bottom: 16px; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <h2>📝 账号申诉</h2>
+  <div id="ban-info" class="info hidden">
+    <p><strong>封禁状态：</strong><span id="ban-status"></span></p>
+    <p><strong>封禁原因：</strong><span id="ban-reason"></span></p>
+    <p><strong>解封时间：</strong><span id="ban-expiry"></span></p>
+    <p><strong>已申诉次数：</strong><span id="appeal-count"></span></p>
+  </div>
+  <div id="login-section">
+    <input type="email" id="login-email" placeholder="你的邮箱">
+    <input type="password" id="login-password" placeholder="密码">
+    <button onclick="loginAndCheck()">查看封禁状态</button>
+  </div>
+  <div id="appeal-section" class="hidden">
+    <textarea id="appeal-text" rows="4" placeholder="请详细说明申诉理由..."></textarea>
+    <button onclick="submitAppeal()">提交申诉</button>
+  </div>
+  <div class="msg" id="msg"></div>
+</div>
+
+<script>
+  (function() {
+    const SUPABASE_URL = 'https://jbwmyqvlujytnjpgsqed.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_RSF_RRme6hI32KQqXBtWlA_httMuqbe';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    let currentUser = null, currentBan = null;
+
+    window.loginAndCheck = async function() {
+      const email = document.getElementById('login-email').value.trim();
+      const password = document.getElementById('login-password').value;
+      const msg = document.getElementById('msg');
+      if (!email || !password) { msg.textContent = '请填写完整'; return; }
+      msg.textContent = '验证中...';
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) { msg.textContent = '❌ 登录失败: ' + error.message; return; }
+      currentUser = data.user;
+      const { data: profile } = await supabase.from('profiles').select('ban_until, ban_reason').eq('id', currentUser.id).single();
+      if (!profile?.ban_until || new Date(profile.ban_until) <= new Date()) { msg.textContent = '✅ 你的账户当前未被封禁'; return; }
+      const { data: bans } = await supabase.from('bans').select('*').eq('user_id', currentUser.id).eq('is_active', true).order('banned_at', { ascending: false }).limit(1);
+      currentBan = bans?.[0];
+      document.getElementById('login-section').classList.add('hidden');
+      document.getElementById('appeal-section').classList.remove('hidden');
+      document.getElementById('ban-info').classList.remove('hidden');
+      document.getElementById('ban-status').textContent = '封禁中';
+      document.getElementById('ban-reason').textContent = profile.ban_reason || '未说明';
+      document.getElementById('ban-expiry').textContent = new Date(profile.ban_until).toLocaleString();
+      document.getElementById('appeal-count').textContent = currentBan?.appeal_count || 0;
+    };
+
+    window.submitAppeal = async function() {
+      const text = document.getElementById('appeal-text').value.trim();
+      if (!text) return alert('请填写申诉理由');
+      const msg = document.getElementById('msg');
+      msg.textContent = '提交中...';
+      if (currentBan) {
+        const newCount = (currentBan.appeal_count || 0) + 1;
+        await supabase.from('bans').update({ appeal_text: text, appeal_count: newCount, appeal_status: 'pending' }).eq('id', currentBan.id);
+      }
+      msg.textContent = '✅ 申诉已提交，管理员会尽快处理';
+      document.getElementById('appeal-text').value = '';
+    };
+  })();
+</script>
+</body>
+</html>

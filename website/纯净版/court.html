@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>起诉孙春志 · 审判中心</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css">
+  <script src="common.js"></script>
+  <style>
+    body { background: #0b0710; font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+    .glass { background: rgba(255,255,255,0.08); backdrop-filter: blur(15px); border: 1px solid rgba(255,200,240,0.15); }
+    .gradient-bg { background: linear-gradient(135deg, #d43f8d, #6a1b4d); }
+    .bottom-nav { position: fixed; bottom: 0; left: 0; width: 100%; background: rgba(20,10,30,0.7); backdrop-filter: blur(20px); border-top: 1px solid rgba(255,255,255,0.1); padding: 10px 24px; display: flex; justify-content: space-around; z-index: 50; }
+    .nav-item { display: flex; flex-direction: column; align-items: center; color: rgba(255,255,240,0.6); font-size: 0.75rem; text-decoration: none; }
+    .nav-item.active { color: #ffb0d9; }
+    .nav-item i { font-size: 1.6rem; margin-bottom: 2px; }
+    .evil-score-card { background: rgba(212,63,141,0.2); border: 1px solid #d43f8d; border-radius: 24px; padding: 16px; margin-bottom: 20px; text-align: center; }
+    .evil-score { font-size: 2.5rem; font-weight: 900; color: #ffb0d9; }
+  </style>
+</head>
+<body class="text-white pb-20">
+
+<div class="container mx-auto px-4 pt-6 max-w-2xl">
+  <div class="flex items-center gap-3 mb-6">
+    <img src="https://jbwmyqvlujytnjpgsqed.supabase.co/storage/v1/object/public/others/f0ba2146b733756d-removebg-preview.png" alt="Logo" class="w-10 h-10 rounded-full object-cover">
+    <h1 class="text-3xl font-extrabold tracking-wide">⚖️ 起诉孙春志</h1>
+  </div>
+
+  <!-- 罪恶积分 -->
+  <div class="evil-score-card">
+    <p class="text-white/70 text-sm">孙春志·罪恶积分</p>
+    <p class="evil-score" id="total-evil-score">0</p>
+    <p class="text-white/50 text-xs">积分越高，罪恶越深</p>
+  </div>
+
+  <div class="glass rounded-3xl p-6 mb-6">
+    <form id="indictment-form" class="space-y-4">
+      <div class="flex items-center gap-2">
+        <span class="text-white/60">原告：</span>
+        <span id="plaintiff-name" class="font-semibold text-pink-300">未登录</span>
+        <a href="profile.html" class="text-xs text-white/40 underline ml-auto">修改昵称</a>
+      </div>
+      <div><span class="text-white/60">被告：</span><span class="font-semibold text-pink-300">孙春志</span></div>
+      <div><label class="text-white/60 text-sm block mb-2">罪名</label><select id="charge" class="w-full p-3 rounded-2xl bg-black/30 border border-white/20 text-white"><option value="恶意拖堂">恶意拖堂</option><option value="布置极难作业">布置极难作业</option><option value="占用晚自习考试">占用晚自习考试</option><option value="其他恶行">其他恶行</option></select></div>
+      <div><label class="text-white/60 text-sm block mb-2">事实与理由</label><textarea id="details" rows="4" class="w-full p-3 rounded-2xl bg-black/30 border border-white/20 text-white" placeholder="请详细描述孙春志的恶行..." required></textarea></div>
+      <div><label class="text-white/60 text-sm block mb-2">审理程序</label><div class="flex gap-3"><label class="flex items-center gap-2"><input type="radio" name="procedure" value="simple" checked class="accent-pink-400"> 简易程序</label><label class="flex items-center gap-2"><input type="radio" name="procedure" value="general"> 一般程序</label></div></div>
+      <button type="submit" class="w-full py-4 gradient-bg rounded-2xl font-bold text-lg" id="submit-btn">提交起诉状</button>
+      <p class="login-hint" id="login-hint" style="color:#a08aa0;font-size:0.8rem;text-align:center;margin-top:8px;">登录后可提交起诉状</p>
+      <p id="submit-status" class="text-xs text-center text-white/50"></p>
+    </form>
+  </div>
+
+  <div class="mt-8"><h2 class="text-2xl font-bold mb-4">📋 案件列表</h2><div id="case-list" class="space-y-3"></div></div>
+</div>
+
+<div class="bottom-nav">
+  <a href="home.html" class="nav-item"><i class="fa fa-home"></i><span>首页</span></a>
+  <a href="overtime.html" class="nav-item"><i class="fa fa-clock-o"></i><span>拖堂</span></a>
+  <a href="court.html" class="nav-item active"><i class="fa fa-gavel"></i><span>审判</span></a>
+  <a href="forum.html" class="nav-item"><i class="fa fa-comments"></i><span>论坛</span></a>
+  <a href="profile.html" class="nav-item"><i class="fa fa-user"></i><span>我的</span></a>
+</div>
+
+<script>
+  (function() {
+    const SUPABASE_URL = 'https://jbwmyqvlujytnjpgsqed.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_RSF_RRme6hI32KQqXBtWlA_httMuqbe';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    let user = null;
+
+    // 初始化
+    async function init() {
+      const { data } = await supabase.auth.getUser();
+      user = data.user;
+      if (user) {
+        await loadPlaintiffName();
+        document.getElementById('login-hint').style.display = 'none';
+      } else {
+        document.getElementById('submit-btn').disabled = true;
+        document.getElementById('submit-btn').textContent = '请登录后提交';
+      }
+      await loadTotalEvilScore();
+      loadCases();
+    }
+
+    async function loadPlaintiffName() {
+      if (!user) return;
+      const { data } = await supabase.from('profiles').select('nickname').eq('id', user.id).single();
+      document.getElementById('plaintiff-name').textContent = data?.nickname || '小志志_未知';
+    }
+
+    async function loadTotalEvilScore() {
+      const { data } = await supabase.from('indictments').select('evil_score').eq('status', 'closed');
+      const total = (data || []).reduce((s, i) => s + (i.evil_score || 0), 0);
+      document.getElementById('total-evil-score').textContent = total;
+    }
+
+    function generateCaseId() {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+      let id = '';
+      for (let i = 0; i < 10; i++) id += chars.charAt(Math.floor(Math.random() * chars.length));
+      return id;
+    }
+
+    // 提交
+    document.getElementById('indictment-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!user) { alert('请先登录'); window.location.href = 'auth.html'; return; }
+      const charge = document.getElementById('charge').value;
+      const details = document.getElementById('details').value.trim();
+      const procedure = document.querySelector('input[name="procedure"]:checked').value;
+      if (!details) return alert('请填写事实与理由');
+      const btn = document.getElementById('submit-btn');
+      btn.disabled = true;
+      try {
+        const caseId = generateCaseId();
+        const plaintiffName = document.getElementById('plaintiff-name').textContent;
+        await supabase.from('indictments').insert({
+          case_id: caseId, plaintiff_id: user.id, plaintiff_name: plaintiffName,
+          charge, details, procedure, status: 'pending'
+        });
+        await supabase.from('case_timeline').insert({
+          case_id: caseId, event: 'submitted', operator_id: user.id, note: '起诉状已提交'
+        });
+        alert('✅ 案件已提交！');
+        document.getElementById('details').value = '';
+        loadCases();
+      } catch (err) {
+        alert('提交失败: ' + err.message);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    // 加载案件列表
+    async function loadCases() {
+      const { data, error } = await supabase
+        .from('indictments')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
+      const container = document.getElementById('case-list');
+      if (error) {
+        console.error('案件加载失败:', error);
+        container.innerHTML = '<p class="text-red-400">案件加载失败</p>';
+        return;
+      }
+      if (!data || data.length === 0) {
+        container.innerHTML = '<p class="text-white/50 text-center">暂无案件</p>';
+        return;
+      }
+      container.innerHTML = data.map(item => {
+        const statusMap = {
+          pending: ['待受理', 'bg-yellow-500/30 text-yellow-300'],
+          accepted: ['审理中', 'bg-blue-500/30 text-blue-300'],
+          rejected: ['已驳回', 'bg-gray-500/30 text-gray-300'],
+          closed: ['已结案', 'bg-green-500/30 text-green-300']
+        };
+        const [statusText, statusColor] = statusMap[item.status] || ['未知', ''];
+        return `<div class="glass rounded-2xl p-4">
+          <div class="flex justify-between">
+            <span class="font-bold text-pink-300">案件 ${escapeHtml(item.case_id)}</span>
+            <span class="text-xs px-2 py-1 rounded-full ${statusColor}">${statusText}</span>
+          </div>
+          <div class="text-sm text-white/70 mt-2">原告: ${escapeHtml(item.plaintiff_name)} | 罪名: ${escapeHtml(item.charge)}</div>
+          <div class="mt-2 flex gap-2 flex-wrap">
+            ${item.indictment_pdf_url ? `<a href="${item.indictment_pdf_url}" target="_blank" class="text-xs underline text-pink-200">📄 起诉状PDF</a>` : ''}
+            ${item.verdict_pdf_url ? `<a href="${item.verdict_pdf_url}" target="_blank" class="text-xs underline text-green-300">📜 判决书PDF</a>` : ''}
+            <button onclick="shareItem('case','${item.case_id}')" class="text-xs text-pink-300"><i class="fa fa-share-alt"></i> 分享</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    init();
+  })();
+</script>
+</body>
+</html>
